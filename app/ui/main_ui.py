@@ -20,6 +20,7 @@ from app.ui.widgets.actions import list_view_actions
 from app.ui.widgets.actions import graphics_view_actions
 from app.ui.widgets.actions import job_manager_actions
 from app.ui.widgets.actions import preset_actions
+from app.ui.widgets.actions import locked_face_actions
 from app.ui.widgets.advanced_embedding_editor import EmbeddingGUI
 import app.ui.widgets.actions.control_actions as control_actions
 from app.processors.video_processor import VideoProcessor
@@ -1144,6 +1145,9 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         list_view_actions.clear_stop_loading_input_media(self)
         list_view_actions.clear_stop_loading_target_media(self)
 
+        # Persist the latest state of locked target faces
+        locked_face_actions.on_close(self)
+
         if self.quit_without_saving:
             print("[INFO] MainWindow: quitting without saving the workspace.")
         else:
@@ -1238,6 +1242,12 @@ class MainWindow(QtWidgets.QMainWindow, Ui_MainWindow):
         self._populate_reference_kv_tensors()
         # Resume target-folder auto-watch if it was left enabled
         self._restore_target_folder_auto_watch()
+
+        # Lock Target Faces: re-apply the saved toggle state and restore locked faces
+        try:
+            locked_face_actions.on_startup(self)
+        except Exception as e:
+            print(f"[WARN] Could not restore locked target faces at startup: {e}")
 
     def register_parameter_section(
         self,

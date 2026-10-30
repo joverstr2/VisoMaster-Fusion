@@ -702,10 +702,29 @@ def get_auto_load_workspace_toggle(
 def load_saved_workspace(
     main_window: "MainWindow", data_filename: Union[str, bool] = False
 ):
+    from app.ui.widgets.actions import locked_face_actions
+
+    # Media clicks during the workspace load must not keep/restore locked faces:
+    # the workspace brings its own target faces. Locked faces that are missing
+    # from the workspace are merged in once it is fully loaded.
+    with locked_face_actions.suppress_locked_faces_restore(main_window):
+        loaded = _load_saved_workspace(main_window, data_filename)
+    if loaded:
+        try:
+            locked_face_actions.after_workspace_loaded(main_window)
+            locked_face_actions.select_first_locked_face(main_window)
+        except Exception as e:
+            print(f"[WARN] Could not restore locked target faces: {e}")
+    return loaded
+
+
+def _load_saved_workspace(
+    main_window: "MainWindow", data_filename: Union[str, bool] = False
+) -> bool:
     if video_control_actions.block_if_issue_scan_active(
         main_window, "load a workspace"
     ):
-        return
+        return False
 
     if not data_filename:
         data_filename, _ = QtWidgets.QFileDialog.getOpenFileName(
@@ -1293,11 +1312,13 @@ def load_saved_workspace(
                     0,
                     partial(_clamp_window_frame_to_available_geometry, main_window),
                 )
+            return True
         except (json.JSONDecodeError, KeyError, TypeError) as e:
             QtWidgets.QMessageBox.critical(
                 main_window, "Error", f"Failed to load workspace: {e}"
             )
-            return
+            return False
+    return False
 
 
 def save_current_workspace(

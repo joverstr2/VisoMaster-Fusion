@@ -23,6 +23,7 @@ from app.ui.widgets.actions import video_control_actions
 from app.ui.widgets.actions import control_actions
 from app.ui.widgets.actions import layout_actions
 from app.ui.widgets.actions import save_load_actions
+from app.ui.widgets.actions import locked_face_actions
 from app.ui.widgets import ui_workers
 from app.helpers.typing_helper import ParametersTypes, MarkerTypes
 import app.helpers.miscellaneous as misc_helpers
@@ -839,6 +840,7 @@ def _wait_for_input_faces_loader(
         time.sleep(0.01)
 
 
+@locked_face_actions.suppress_locked_faces_during(locked_face_actions.after_job_loaded)
 def load_job_workspace(main_window: "MainWindow", job_name: str):
     """
     Main function to load a job workspace. (HEAVY LOAD)
@@ -1029,6 +1031,9 @@ def load_job_workspace(main_window: "MainWindow", job_name: str):
         progress_dialog.close()
 
 
+@locked_face_actions.suppress_locked_faces_during(
+    locked_face_actions.after_workspace_loaded
+)
 def _restore_workspace_from_snapshot(main_window: "MainWindow", data: dict):
     """
     Restores the entire UI workspace from a saved snapshot dictionary.
@@ -1595,6 +1600,7 @@ def get_selected_jobs(main_window: "MainWindow") -> list[str]:
 
 
 @Slot(dict)
+@locked_face_actions.suppress_locked_faces_during(locked_face_actions.after_job_loaded)
 def load_master_assets(main_window: "MainWindow", master_data: dict):
     """
     (SLOT) Loads all unique assets for the entire job batch.
@@ -1659,6 +1665,7 @@ def load_master_assets(main_window: "MainWindow", master_data: dict):
 
 
 @Slot(dict)
+@locked_face_actions.suppress_locked_faces_during(locked_face_actions.after_job_loaded)
 def load_job_settings(main_window: "MainWindow", job_data: dict):
     """
     (SLOT) Loads the lightweight settings for a single job from the batch.
@@ -1757,6 +1764,7 @@ def load_job_settings(main_window: "MainWindow", job_data: dict):
 
 
 @Slot()
+@locked_face_actions.suppress_locked_faces_during(locked_face_actions.after_job_loaded)
 def clear_job_settings(main_window: "MainWindow"):
     """
     (SLOT) Clears only the settings related to a single job,

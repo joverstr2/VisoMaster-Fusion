@@ -212,3 +212,14 @@ def test_the_hrffa_head_detector_is_not_a_selectable_face_detector():
         assert not any("deim" in str(option).lower() for option in entry["options"]), (
             f"{cat}/{name}: the HRFFA head detector must stay internal"
         )
+
+
+def test_sld_lock_target_faces_toggle_follows_keep_input_toggle():
+    """Lock Target Faces toggle sits right after Keep Selected Input Faces."""
+    swap = SETTINGS_LAYOUT_DATA["Swap settings"]
+    keys = list(swap.keys())
+    assert keys.index("LockTargetFacesToggle") == keys.index("KeepInputToggle") + 1
+    entry = swap["LockTargetFacesToggle"]
+    assert entry["label"] == "Lock Target Faces"
+    assert entry["default"] is False
+    assert "exec_function" in entry
