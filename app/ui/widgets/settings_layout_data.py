@@ -339,6 +339,14 @@ SETTINGS_LAYOUT_DATA: Any = {
             "default": False,
             "help": "Keep the selected Input Faces Or Embeddings when switching Target Media.",
         },
+        "LockTargetFacesToggle": {
+            "level": 1,
+            "label": "Lock Target Faces",
+            "default": False,
+            "help": "Keep locked Target Faces (right-click a target face > Lock Target Face) and their assigned Input Faces / Embeddings on every media load and after restarts. Unlocked faces are cleared as usual.",
+            "exec_function": control_actions.toggle_lock_target_faces,
+            "exec_function_args": [],
+        },
         "SwapOnlyBestMatchEnableToggle": {
             "level": 1,
             "label": "Swap Input Face only once",

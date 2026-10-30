@@ -202,6 +202,12 @@ def set_video_playback_fps(main_window: "MainWindow", set_video_fps=False):
         )
 
 
+def toggle_lock_target_faces(main_window: "MainWindow", toggle_value=False):
+    from app.ui.widgets.actions import locked_face_actions
+
+    locked_face_actions.on_lock_target_faces_toggled(main_window, bool(toggle_value))
+
+
 def toggle_virtualcam(main_window: "MainWindow", toggle_value=False):
     video_processor = main_window.video_processor
     if toggle_value:

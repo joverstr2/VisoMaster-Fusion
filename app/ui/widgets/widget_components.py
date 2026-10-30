@@ -289,7 +289,13 @@ class TargetMediaCardButton(CardButton):
 
         # Set up videoSeekLineEdit
         video_control_actions.set_up_video_seek_line_edit(main_window)
-        # Clear current target faces
+        # Lock Target Faces: remember the locked faces before clearing
+        from app.ui.widgets.actions import locked_face_actions
+
+        keep_locked_faces = locked_face_actions.is_lock_active(main_window)
+        if keep_locked_faces:
+            locked_face_actions.snapshot_locked_faces(main_window)
+        # Clear current target faces (also clears the issue-scan markers)
         card_actions.clear_target_faces(main_window, refresh_frame=False)
         # Check if the user wants to keep input faces/embeddings selected
         # Keep Inputs checked if KeepInput, AutoSwap or Batch is active
@@ -306,6 +312,10 @@ class TargetMediaCardButton(CardButton):
         video_control_actions.remove_all_markers(main_window)
 
         main_window.cur_selected_target_face_button = False
+
+        # Lock Target Faces: restore the locked faces (and their assigned inputs)
+        if keep_locked_faces:
+            locked_face_actions.restore_locked_faces(main_window)
 
         # Reset buttons and slider
         video_control_actions.reset_media_buttons(main_window)
@@ -494,6 +504,13 @@ class TargetMediaCardButton(CardButton):
             from app.ui.widgets.actions import layout_actions
 
             layout_actions.fit_image_to_view_onchange(main_window)
+
+        from app.ui.widgets.actions import locked_face_actions
+
+        if locked_face_actions.is_lock_active(
+            main_window
+        ) and locked_face_actions.select_first_locked_face(main_window):
+            common_widget_actions.refresh_frame(main_window)
 
         if (
             main_window.control["SendVirtCamFramesEnableToggle"]
@@ -706,6 +723,9 @@ class TargetFaceCardButton(CardButton):
         ] = {}  # Key: embedding_swap_model, Value: np.ndarray
         self.assigned_kv_map: Dict | None = None
 
+        # Lock Target Faces: locked faces are kept on media load / restored at startup
+        self.is_locked = False
+
         # Face re-aging: aged versions of embedding/KV map (populated by Apply button)
         self.aged_input_embedding: Dict[str, np.ndarray] = {}
         self.aged_kv_map: Dict | None = None
@@ -858,7 +878,8 @@ class TargetFaceCardButton(CardButton):
                 target_face_button.setChecked(False)
 
         # Check if KeepInput toggle, or Autoswap or Batch
-        if (
+        # Locked target faces always keep their own assigned inputs
+        if not getattr(self, "is_locked", False) and (
             main_window.control.get("KeepInputToggle", False)
             or getattr(main_window, "is_batch_processing", False)
             or main_window.control.get("AutoSwapToggle", False)
@@ -1186,6 +1207,15 @@ class TargetFaceCardButton(CardButton):
         )
         self.remove_action = QtGui.QAction("Remove from List", self)
         self.remove_action.triggered.connect(self.remove_target_face_from_list)
+        self.lock_action = QtGui.QAction(
+            "Unlock Target Face"
+            if getattr(self, "is_locked", False)
+            else "Lock Target Face",
+            self,
+        )
+        self.lock_action.triggered.connect(self.toggle_lock)
+        self.popMenu.addAction(self.lock_action)
+        self.popMenu.addSeparator()
         self.popMenu.addAction(self.parameters_copy_action)
         self.popMenu.addAction(self.parameters_paste_action)
         self.popMenu.addAction(self.save_parameters_action)
@@ -1210,6 +1240,14 @@ class TargetFaceCardButton(CardButton):
             self.load_parameters_action.setEnabled(not scan_active)
             self.load_parameters_and_settings_action.setEnabled(not scan_active)
             self.remove_action.setEnabled(not scan_active)
+            lock_action = getattr(self, "lock_action", None)
+            if lock_action is not None:
+                lock_action.setText(
+                    "Unlock Target Face"
+                    if getattr(self, "is_locked", False)
+                    else "Lock Target Face"
+                )
+                lock_action.setEnabled(not scan_active)
             self.small_thumbnails_action.setChecked(current_face_size == (70, 70))
             self.large_thumbnails_action.setChecked(current_face_size == (96, 96))
             self._exec_context_menu(point)
@@ -1225,7 +1263,13 @@ class TargetFaceCardButton(CardButton):
                 "small_thumbnails_action",
                 "large_thumbnails_action",
                 "remove_action",
+                "lock_action",
             )
+
+    def toggle_lock(self):
+        from app.ui.widgets.actions import locked_face_actions
+
+        locked_face_actions.toggle_target_face_lock(self.main_window, self.face_id)
 
     def remove_target_face_from_list(self):
         main_window = self.main_window
@@ -1242,6 +1286,12 @@ class TargetFaceCardButton(CardButton):
                 main_window.video_processor.ui_state_is_dirty = True
             else:
                 main_window.video_processor.stop_processing()
+
+        if getattr(self, "is_locked", False):
+            from app.ui.widgets.actions import locked_face_actions
+
+            locked_face_actions.on_target_face_removed(main_window, self.face_id)
+            self.is_locked = False
 
         i = self.get_item_position()
         main_window.targetFacesList.takeItem(i)
@@ -1295,6 +1345,15 @@ class TargetFaceCardButton(CardButton):
 
     def refresh_display_label(self):
         display_label = self.get_display_label()
+        set_tool_tip = getattr(self, "setToolTip", None)
+        if getattr(self, "is_locked", False):
+            display_label = f"\U0001f512 {display_label}"
+            if callable(set_tool_tip):
+                set_tool_tip(
+                    "Locked: kept on every media load while 'Lock Target Faces' is on"
+                )
+        elif callable(set_tool_tip):
+            set_tool_tip("")
         self.display_label.setText(display_label)
         face_header_action = getattr(self, "face_header_action", None)
         if face_header_action is not None:
@@ -1431,6 +1490,12 @@ class InputFaceCardButton(CardButton):
             if not self.isChecked():
                 cur_selected_target_face_button.assigned_input_faces.pop(self.face_id)
             cur_selected_target_face_button.calculate_assigned_input_embedding()
+            if getattr(cur_selected_target_face_button, "is_locked", False):
+                from app.ui.widgets.actions import locked_face_actions
+
+                locked_face_actions.update_locked_face_if_needed(
+                    main_window, cur_selected_target_face_button
+                )
             if not self.isChecked():
                 gc.collect()
                 if torch.cuda.is_available():
@@ -1794,6 +1859,12 @@ class EmbeddingCardButton(CardButton):
                     self.embedding_id
                 )
             cur_selected_target_face_button.calculate_assigned_input_embedding()
+            if getattr(cur_selected_target_face_button, "is_locked", False):
+                from app.ui.widgets.actions import locked_face_actions
+
+                locked_face_actions.update_locked_face_if_needed(
+                    main_window, cur_selected_target_face_button
+                )
             if not self.isChecked():
                 gc.collect()
                 if torch.cuda.is_available():

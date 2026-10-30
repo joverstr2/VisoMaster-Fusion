@@ -240,3 +240,14 @@ def test_landmark_dropdown_options_are_all_mapped_to_models():
         assert "tufa98" in entry["options"]
         assert "tufa314" in entry["options"]
         assert "orformer98" in entry["options"]
+
+
+def test_sld_lock_target_faces_toggle_follows_keep_input_toggle():
+    """Lock Target Faces toggle sits right after Keep Selected Input Faces."""
+    swap = SETTINGS_LAYOUT_DATA["Swap settings"]
+    keys = list(swap.keys())
+    assert keys.index("LockTargetFacesToggle") == keys.index("KeepInputToggle") + 1
+    entry = swap["LockTargetFacesToggle"]
+    assert entry["label"] == "Lock Target Faces"
+    assert entry["default"] is False
+    assert "exec_function" in entry
