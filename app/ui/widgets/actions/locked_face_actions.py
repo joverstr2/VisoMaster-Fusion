@@ -28,6 +28,7 @@ from typing import (
 )
 
 import numpy as np
+from PySide6 import QtCore
 
 from app.helpers import locked_faces as lf
 import app.helpers.miscellaneous as misc_helpers
@@ -40,6 +41,9 @@ if TYPE_CHECKING:
 LOCK_TOGGLE_NAME = "LockTargetFacesToggle"
 LOCKED_LABEL_PREFIX = "\U0001f512 "  # lock emoji
 DEFAULT_RECOGNITION_MODEL = "arcface_128"
+# Delay before parameter changes of a locked face are written to the file, so
+# dragging a slider does not rewrite locked_faces.json on every step.
+SAVE_DEBOUNCE_MS = 1500
 
 
 # ---------------------------------------------------------------------------
@@ -174,6 +178,13 @@ def _collect_sources(
     return sources
 
 
+def _face_parameters(main_window: "MainWindow", face_id: str) -> Dict[str, Any]:
+    """Per-face parameters of a target face as a plain dict ({} if none)."""
+    parameters = main_window.parameters.get(face_id)
+    parameters_data = getattr(parameters, "data", parameters) or {}
+    return dict(parameters_data)
+
+
 def build_entry_for_target_face(
     main_window: "MainWindow", target_face_button: Any
 ) -> Dict[str, Any]:
@@ -186,12 +197,10 @@ def build_entry_for_target_face(
     except Exception as e:
         print(f"[WARN] Could not compute '{recognition_model}' embedding: {e}")
 
-    parameters = main_window.parameters.get(face_id)
-    parameters_data = getattr(parameters, "data", parameters) or {}
     return lf.build_locked_face_entry(
         cropped_face=target_face_button.cropped_face,
         embedding_store=target_face_button.embedding_store,
-        parameters=dict(parameters_data),
+        parameters=_face_parameters(main_window, face_id),
         recognition_model=recognition_model,
         assigned_sources=_collect_sources(main_window, target_face_button),
         assigned_input_embedding=target_face_button.assigned_input_embedding,
@@ -217,9 +226,49 @@ def snapshot_locked_faces(main_window: "MainWindow") -> bool:
         previous = data["locked_faces"].get(face_id, {})
         if previous.get("locked_at"):
             entry["locked_at"] = previous["locked_at"]
+        if not entry.get("parameters") and previous.get("parameters"):
+            # The session has no parameters for this face (e.g. they were
+            # already dropped by a media change): keep the saved ones instead
+            # of overwriting them with nothing (which restores the defaults).
+            entry["parameters"] = previous["parameters"]
         data["locked_faces"][face_id] = entry
     data["lock_enabled"] = is_lock_enabled(main_window)
     return _save(main_window, data)
+
+
+def _flush_scheduled_save(main_window: "MainWindow") -> None:
+    if is_restore_suppressed(main_window):
+        return
+    try:
+        snapshot_locked_faces(main_window)
+    except Exception as e:
+        print(f"[ERROR] Could not save locked faces: {e}")
+
+
+def schedule_locked_faces_save(main_window: "MainWindow") -> None:
+    """Save the locked faces shortly after a per-face parameter change."""
+    if is_restore_suppressed(main_window):
+        return
+    timer = getattr(main_window, "_locked_faces_save_timer", None)
+    if not isinstance(timer, QtCore.QTimer):
+        try:
+            timer = QtCore.QTimer()
+        except Exception:
+            # No Qt event loop available: save immediately.
+            _flush_scheduled_save(main_window)
+            return
+        timer.setSingleShot(True)
+        timer.setInterval(SAVE_DEBOUNCE_MS)
+        timer.timeout.connect(lambda: _flush_scheduled_save(main_window))
+        main_window._locked_faces_save_timer = timer
+    timer.start()
+
+
+def flush_pending_locked_faces_save(main_window: "MainWindow") -> None:
+    """Write a pending (debounced) save right away, e.g. on close."""
+    timer = getattr(main_window, "_locked_faces_save_timer", None)
+    if isinstance(timer, QtCore.QTimer) and timer.isActive():
+        timer.stop()
 
 
 def update_locked_face_if_needed(
@@ -546,6 +595,7 @@ def on_startup(main_window: "MainWindow") -> None:
 
 
 def on_close(main_window: "MainWindow") -> None:
+    flush_pending_locked_faces_save(main_window)
     try:
         snapshot_locked_faces(main_window)
     except Exception as e:
