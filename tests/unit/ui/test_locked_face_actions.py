@@ -87,7 +87,9 @@ def main_window(tmp_path, monkeypatch, toasts):
         input_faces={},
         merged_embeddings={},
         parameters={},
-        default_parameters=SimpleNamespace(data={"SimilarityThresholdSlider": 60}),
+        default_parameters=SimpleNamespace(
+            data={"SimilarityThresholdSlider": 60, "SwapperResSelection": "128"}
+        ),
         selected_target_face_id=None,
         is_batch_processing=False,
         parameter_widgets={lfa.LOCK_TOGGLE_NAME: _FakeToggle()},
@@ -329,3 +331,114 @@ def test_lfa15_close_snapshot_keeps_locked_at_and_assignment_changes(main_window
     entry = _file(main_window)["locked_faces"]["t1"]
     assert entry["locked_at"] == locked_at
     assert entry["assigned_input_faces"] == ["in1"]
+
+
+# --- Per-face parameters (e.g. "Swapper Resolution") ------------------------------
+
+
+def _lock_face_with_params(mw, params):
+    face = _add_face(mw, "t1", _unit([1, 0, 0, 0]))
+    mw.parameters["t1"] = dict(params)
+    lfa.lock_target_face(mw, "t1")
+    return face
+
+
+def _simulate_media_change(mw):
+    """What TargetMediaCardButton.load_media does to the session state."""
+    if lfa.is_lock_active(mw):
+        lfa.snapshot_locked_faces(mw)  # new: before the parameters are dropped
+    mw.parameters = {}
+    mw.selected_target_face_id = None
+    # reset_related_widgets_and_values
+    lfa.snapshot_locked_faces(mw)
+    mw.target_faces.clear()
+    mw.parameters.clear()
+    lfa.restore_locked_faces(mw)
+
+
+def test_lfa16_media_change_keeps_per_face_parameters(main_window):
+    main_window.control[lfa.LOCK_TOGGLE_NAME] = True
+    _lock_face_with_params(
+        main_window, {"SwapperResSelection": "128", "SimilarityThresholdSlider": 60}
+    )
+    # Changed after locking (only in the session so far).
+    main_window.parameters["t1"]["SwapperResSelection"] = "512"
+
+    _simulate_media_change(main_window)
+
+    assert main_window.parameters["t1"]["SwapperResSelection"] == "512"
+    saved = _file(main_window)["locked_faces"]["t1"]["parameters"]
+    assert saved["SwapperResSelection"] == "512"
+
+    # And again on the next video.
+    _simulate_media_change(main_window)
+    assert main_window.parameters["t1"]["SwapperResSelection"] == "512"
+
+
+def test_lfa17_snapshot_without_session_parameters_keeps_saved_ones(main_window):
+    _lock_face_with_params(main_window, {"SwapperResSelection": "384"})
+    main_window.parameters = {}  # e.g. dropped by a media change
+    lfa.snapshot_locked_faces(main_window)
+    saved = _file(main_window)["locked_faces"]["t1"]["parameters"]
+    assert saved == {"SwapperResSelection": "384"}
+
+
+def test_lfa18_restart_restores_saved_per_face_parameters(main_window):
+    _lock_face_with_params(
+        main_window, {"SwapperResSelection": "256", "SimilarityThresholdSlider": 75}
+    )
+    main_window.control[lfa.LOCK_TOGGLE_NAME] = True  # set by update_control
+    lfa.on_lock_target_faces_toggled(main_window, True)
+    lfa.on_close(main_window)
+    # New session.
+    main_window.target_faces.clear()
+    main_window.parameters = {}
+    main_window.selected_target_face_id = None
+    lfa.on_startup(main_window)
+    params = main_window.parameters["t1"]
+    assert params["SwapperResSelection"] == "256"
+    assert params["SimilarityThresholdSlider"] == 75
+
+
+def test_lfa19_parameter_change_schedules_debounced_save(main_window, monkeypatch):
+    _lock_face_with_params(main_window, {"SwapperResSelection": "128"})
+    lfa.schedule_locked_faces_save(main_window)
+    timer = main_window._locked_faces_save_timer
+    assert timer.isSingleShot() and timer.interval() == lfa.SAVE_DEBOUNCE_MS
+    main_window.parameters["t1"]["SwapperResSelection"] = "512"
+    # Timer firing writes the new value.
+    lfa._flush_scheduled_save(main_window)
+    saved = _file(main_window)["locked_faces"]["t1"]["parameters"]
+    assert saved["SwapperResSelection"] == "512"
+    lfa.flush_pending_locked_faces_save(main_window)
+    assert not timer.isActive()
+
+
+def test_lfa20_common_actions_only_schedules_for_locked_faces(main_window, monkeypatch):
+    from app.ui.widgets.actions import common_actions
+
+    calls = []
+    monkeypatch.setattr(lfa, "schedule_locked_faces_save", lambda mw: calls.append(mw))
+    face = _add_face(main_window, "t1", _unit([1, 0, 0, 0]))
+    common_actions._schedule_locked_face_save(main_window, "t1")
+    assert calls == []
+    face.is_locked = True
+    common_actions._schedule_locked_face_save(main_window, "t1")
+    common_actions._schedule_locked_face_save(main_window, "missing")
+    assert calls == [main_window]
+
+
+def test_lfa21_load_media_snapshots_before_dropping_parameters():
+    """Regression: the snapshot must run before load_media clears parameters."""
+    import inspect
+
+    from app.ui.widgets.widget_components import TargetMediaCardButton
+
+    for method in (
+        TargetMediaCardButton.load_media,
+        TargetMediaCardButton.deselect_currently_selected_video,
+    ):
+        source = inspect.getsource(method)
+        assert source.index("snapshot_locked_faces") < source.index(
+            "main_window.parameters = {}"
+        )

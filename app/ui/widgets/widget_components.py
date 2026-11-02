@@ -365,6 +365,13 @@ class TargetMediaCardButton(CardButton):
                 main_window.selected_target_face_id
             ].copy()
 
+        # Lock Target Faces: save the locked faces (incl. their per-face
+        # parameters) before the parameters of the previous media are dropped
+        from app.ui.widgets.actions import locked_face_actions
+
+        if locked_face_actions.is_lock_active(main_window):
+            locked_face_actions.snapshot_locked_faces(main_window)
+
         # Reset the frame counter
         main_window.video_processor.current_frame_number = 0
         main_window.video_processor.media_path = self.media_path
@@ -541,6 +548,13 @@ class TargetMediaCardButton(CardButton):
         # Deselect the currently selected video
         if main_window.selected_video_button == self:
             self.reset_media_state()
+
+            # Lock Target Faces: save the locked faces (incl. their per-face
+            # parameters) before the parameters are dropped
+            from app.ui.widgets.actions import locked_face_actions
+
+            if locked_face_actions.is_lock_active(main_window):
+                locked_face_actions.snapshot_locked_faces(main_window)
 
             # Reset the frame counter
             main_window.video_processor.current_frame_number = 0

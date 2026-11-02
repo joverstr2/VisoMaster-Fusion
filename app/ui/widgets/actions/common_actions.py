@@ -118,6 +118,18 @@ def update_control(
     refresh_frame(main_window)
 
 
+def _schedule_locked_face_save(main_window: "MainWindow", face_id) -> None:
+    """Lock Target Faces: persist per-face parameter changes of locked faces."""
+    target_faces = getattr(main_window, "target_faces", None)
+    if not isinstance(target_faces, dict):
+        return
+    if not getattr(target_faces.get(face_id), "is_locked", False):
+        return
+    from app.ui.widgets.actions import locked_face_actions
+
+    locked_face_actions.schedule_locked_faces_save(main_window)
+
+
 def create_default_parameter(
     main_window: "MainWindow", parameter_name, parameter_value
 ):
@@ -176,6 +188,7 @@ def update_parameter(
     # Update parameters for the selected face
     if main_window.target_faces and face_id:
         main_window.parameters[face_id][parameter_name] = parameter_value
+        _schedule_locked_face_save(main_window, face_id)
         # Also update the feeder's state if it's running
         # BUG-16 / THREAD-03: feeder_parameters None check moved inside the lock to prevent TOCTOU race
         if hasattr(main_window, "video_processor") and main_window.video_processor:
@@ -815,6 +828,8 @@ def set_widgets_values_using_face_id_parameters(
     else:
         # print(f"Set widgets values using face_id {face_id}")
         parameters = main_window.parameters[face_id].copy()
+        # Pasted / reset / preset / loaded parameters of a locked face
+        _schedule_locked_face_save(main_window, face_id)
     parameter_widgets = main_window.parameter_widgets
     # Preserve outer suppression state so nested batch operations do not override it.
     previous_batch_flag = getattr(main_window, "_batch_update_in_progress", False)
