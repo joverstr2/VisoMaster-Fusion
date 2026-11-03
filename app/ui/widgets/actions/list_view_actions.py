@@ -14,6 +14,7 @@ from app.ui.widgets.actions import card_actions
 from app.ui.widgets.actions import filter_actions
 from app.ui.widgets import widget_components
 import app.helpers.miscellaneous as misc_helpers
+from app.helpers import browse_folders
 from app.ui.widgets import ui_workers
 from app.ui.widgets import sortable_widgets
 
@@ -593,6 +594,42 @@ def clear_stop_loading_target_media(main_window: "MainWindow", clear_list: bool 
             main_window.targetVideosList.clear()
 
 
+def _browse_folders_file(main_window: "MainWindow") -> Path | None:
+    root = getattr(main_window, "project_root_path", None)
+    if not isinstance(root, (str, Path)) or not str(root):
+        return None
+    return browse_folders.get_browse_folders_path(root)
+
+
+def _browse_start_folder(
+    main_window: "MainWindow", key: str, *, prefer_parent: bool, default=""
+) -> str:
+    """Where a browse dialog for ``key`` should open (remembered across restarts)."""
+    default = default if isinstance(default, str) else ""
+    file_path = _browse_folders_file(main_window)
+    try:
+        if file_path is None:
+            return browse_folders.resolve_start_folder(
+                "", prefer_parent=prefer_parent, default=default
+            )
+        return browse_folders.get_start_folder(
+            file_path, key, prefer_parent=prefer_parent, default=default
+        )
+    except Exception as e:
+        print(f"[WARN] Could not resolve browse folder location: {e}")
+        return ""
+
+
+def _remember_browse_folder(main_window: "MainWindow", key: str, folder) -> None:
+    file_path = _browse_folders_file(main_window)
+    if file_path is None or not isinstance(folder, str) or not folder:
+        return
+    try:
+        browse_folders.save_browse_folder(file_path, key, folder)
+    except Exception as e:
+        print(f"[WARN] Could not remember browse folder location: {e}")
+
+
 @QtCore.Slot()
 def select_target_medias(
     main_window: "MainWindow", source_type="folder", folder_name=False, files_list=None
@@ -607,16 +644,31 @@ def select_target_medias(
     files_list = files_list or []
     if source_type == "folder":
         folder_name = QtWidgets.QFileDialog.getExistingDirectory(
-            dir=main_window.last_target_media_folder_path
+            dir=_browse_start_folder(
+                main_window,
+                browse_folders.KEY_TARGET_MEDIA,
+                prefer_parent=True,
+                default=main_window.last_target_media_folder_path,
+            )
         )
         if not folder_name:
             return
         main_window.targetVideosPathLineEdit.setText(folder_name)
         main_window.targetVideosPathLineEdit.setToolTip(folder_name)
         main_window.last_target_media_folder_path = folder_name
+        _remember_browse_folder(
+            main_window, browse_folders.KEY_TARGET_MEDIA, folder_name
+        )
 
     elif source_type == "files":
-        files_list = QtWidgets.QFileDialog.getOpenFileNames()[0]
+        files_list = QtWidgets.QFileDialog.getOpenFileNames(
+            dir=_browse_start_folder(
+                main_window,
+                browse_folders.KEY_TARGET_MEDIA,
+                prefer_parent=False,
+                default=main_window.last_target_media_folder_path,
+            )
+        )[0]
         if not files_list:
             return
         # Get Folder name from the first file
@@ -624,6 +676,7 @@ def select_target_medias(
         main_window.targetVideosPathLineEdit.setText(file_dir)
         main_window.targetVideosPathLineEdit.setToolTip(file_dir)
         main_window.last_target_media_folder_path = file_dir
+        _remember_browse_folder(main_window, browse_folders.KEY_TARGET_MEDIA, file_dir)
 
     clear_stop_loading_target_media(main_window)
     card_actions.clear_target_faces(main_window)
@@ -879,22 +932,38 @@ def select_input_face_images(
     files_list = files_list or []
     if source_type == "folder":
         folder_name = QtWidgets.QFileDialog.getExistingDirectory(
-            dir=main_window.last_input_media_folder_path
+            dir=_browse_start_folder(
+                main_window,
+                browse_folders.KEY_INPUT_FACES,
+                prefer_parent=True,
+                default=main_window.last_input_media_folder_path,
+            )
         )
         if not folder_name:
             return
         main_window.inputFacesPathLineEdit.setText(folder_name)
         main_window.inputFacesPathLineEdit.setToolTip(folder_name)
         main_window.last_input_media_folder_path = folder_name
+        _remember_browse_folder(
+            main_window, browse_folders.KEY_INPUT_FACES, folder_name
+        )
 
     elif source_type == "files":
-        files_list = QtWidgets.QFileDialog.getOpenFileNames()[0]
+        files_list = QtWidgets.QFileDialog.getOpenFileNames(
+            dir=_browse_start_folder(
+                main_window,
+                browse_folders.KEY_INPUT_FACES,
+                prefer_parent=False,
+                default=main_window.last_input_media_folder_path,
+            )
+        )[0]
         if not files_list:
             return
         file_dir = misc_helpers.get_dir_of_file(files_list[0])
         main_window.inputFacesPathLineEdit.setText(file_dir)
         main_window.inputFacesPathLineEdit.setToolTip(file_dir)
         main_window.last_input_media_folder_path = file_dir
+        _remember_browse_folder(main_window, browse_folders.KEY_INPUT_FACES, file_dir)
 
     clear_stop_loading_input_media(main_window)
     card_actions.clear_input_faces(main_window)
@@ -945,8 +1014,20 @@ def set_up_list_widget_placeholder(
 
 
 def select_output_media_folder(main_window: "MainWindow"):
-    folder_name = QtWidgets.QFileDialog.getExistingDirectory(main_window)
+    current_output = getattr(main_window, "control", {}).get("OutputMediaFolder", "")
+    folder_name = QtWidgets.QFileDialog.getExistingDirectory(
+        main_window,
+        dir=_browse_start_folder(
+            main_window,
+            browse_folders.KEY_OUTPUT_FOLDER,
+            prefer_parent=True,
+            default=current_output,
+        ),
+    )
     if folder_name:
+        _remember_browse_folder(
+            main_window, browse_folders.KEY_OUTPUT_FOLDER, folder_name
+        )
         main_window.outputFolderLineEdit.setText(folder_name)
         common_widget_actions.create_control(
             main_window, "OutputMediaFolder", folder_name
