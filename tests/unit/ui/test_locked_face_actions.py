@@ -442,3 +442,24 @@ def test_lfa21_load_media_snapshots_before_dropping_parameters():
         assert source.index("snapshot_locked_faces") < source.index(
             "main_window.parameters = {}"
         )
+
+
+def test_lfa22_all_merged_embeddings_spans_every_embedding_tab():
+    """Embedding tabs: merged_embeddings holds only the active tab."""
+    from types import SimpleNamespace
+
+    a, b, c = object(), object(), object()
+    active = {"e3": c}
+    mw = SimpleNamespace(
+        embedding_tab_states=[
+            {"embeddings": {"e1": a}},
+            {"embeddings": {"e2": b}},
+            {"embeddings": active},
+        ],
+        merged_embeddings=active,
+    )
+    assert lfa.all_merged_embeddings(mw) == {"e1": a, "e2": b, "e3": c}
+    # Without tabs (older layouts / tests) it is just merged_embeddings
+    assert lfa.all_merged_embeddings(SimpleNamespace(merged_embeddings={"x": a})) == {
+        "x": a
+    }

@@ -170,12 +170,24 @@ def _collect_sources(
             store = input_face_button.embedding_store
         sources.append(lf.build_input_face_source(input_face_id, media_path, store))
     for embedding_id, store in target_face_button.assigned_merged_embeddings.items():
-        embed_button = main_window.merged_embeddings.get(embedding_id)
+        embed_button = all_merged_embeddings(main_window).get(embedding_id)
         name = getattr(embed_button, "embedding_name", "") or ""
         if embed_button is not None:
             store = embed_button.embedding_store
         sources.append(lf.build_embedding_source(embedding_id, name, store))
     return sources
+
+
+def all_merged_embeddings(main_window: "MainWindow") -> Dict[str, Any]:
+    """Embedding cards of *every* embeddings tab (``merged_embeddings`` only
+    holds the active tab), so locked sources in other tabs are found too."""
+    combined: Dict[str, Any] = {}
+    for state in getattr(main_window, "embedding_tab_states", None) or []:
+        embeddings = state.get("embeddings") if isinstance(state, dict) else None
+        if isinstance(embeddings, dict):
+            combined.update(embeddings)
+    combined.update(getattr(main_window, "merged_embeddings", None) or {})
+    return combined
 
 
 def _face_parameters(main_window: "MainWindow", face_id: str) -> Dict[str, Any]:
@@ -392,7 +404,7 @@ def _assign_sources(
     }
     embeddings = {
         embedding_id: getattr(button, "embedding_name", "")
-        for embedding_id, button in main_window.merged_embeddings.items()
+        for embedding_id, button in all_merged_embeddings(main_window).items()
     }
     for source in entry.get("assigned_sources", []):
         kind, card_id = lf.resolve_source(source, input_faces, embeddings)
@@ -403,7 +415,7 @@ def _assign_sources(
             continue
         if kind == lf.SOURCE_KIND_EMBEDDING and card_id is not None:
             target_face_button.assigned_merged_embeddings[card_id] = (
-                main_window.merged_embeddings[card_id].embedding_store
+                all_merged_embeddings(main_window)[card_id].embedding_store
             )
             continue
         # Source is not loaded in this session: recreate it as an embedding card
@@ -417,7 +429,7 @@ def _assign_sources(
             str(source.get("id"))
             if source.get("kind") == lf.SOURCE_KIND_EMBEDDING
             and source.get("id")
-            and str(source.get("id")) not in main_window.merged_embeddings
+            and str(source.get("id")) not in all_merged_embeddings(main_window)
             else str(uuid.uuid1().int)
         )
         list_view_actions.create_and_add_embed_button_to_list(
