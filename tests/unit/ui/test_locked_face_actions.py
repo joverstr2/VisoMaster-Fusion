@@ -463,3 +463,23 @@ def test_lfa22_all_merged_embeddings_spans_every_embedding_tab():
     assert lfa.all_merged_embeddings(SimpleNamespace(merged_embeddings={"x": a})) == {
         "x": a
     }
+
+
+def test_lfa_unlock_all_faces_clears_file_and_labels(main_window, toasts):
+    face_a = _add_face(main_window, "t1", _unit([1, 0, 0, 0]))
+    face_b = _add_face(main_window, "t2", _unit([0, 1, 0, 0]))
+    unlocked = _add_face(main_window, "t3", _unit([0, 0, 1, 0]))
+    assert lfa.lock_target_face(main_window, "t1")
+    assert lfa.lock_target_face(main_window, "t2")
+    face_a.label_refreshes = 0
+    face_b.label_refreshes = 0
+    unlocked.label_refreshes = 0
+
+    assert lfa.unlock_all_faces(main_window) == 2
+    assert not face_a.is_locked and not face_b.is_locked
+    assert not unlocked.is_locked
+    assert face_a.label_refreshes == 1 and face_b.label_refreshes == 1
+    assert unlocked.label_refreshes == 0
+    assert _file(main_window)["locked_faces"] == {}
+    assert toasts[-1] == ("All Faces Unlocked", "information")
+    assert lfa.unlock_all_faces(main_window) == 0

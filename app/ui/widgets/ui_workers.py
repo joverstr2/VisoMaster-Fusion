@@ -192,6 +192,17 @@ class TargetMediaLoaderWorker(qtc.QThread):
             else:
                 q_image, metadata = thumbnail_result, None
 
+            # Height is needed for the HD/SD badge even when full list metadata
+            # is turned off. probe_media_metadata is a cheap header / CAP_PROP
+            # read and does not decode frames.
+            if metadata is None and q_image:
+                try:
+                    metadata = misc_helpers.probe_media_metadata(
+                        media_file_path, file_type
+                    )
+                except Exception:
+                    metadata = None
+
             if q_image:
                 return (media_file_path, q_image, file_type, media_id, metadata)
 

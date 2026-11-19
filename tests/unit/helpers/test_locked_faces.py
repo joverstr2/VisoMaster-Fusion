@@ -214,3 +214,19 @@ def test_lf14_plan_restore_skips_entries_without_thumbnail():
     to_create, _, skipped = lf.plan_restore({"a": entry}, "arcface_128", {})
     assert to_create == []
     assert skipped and skipped[0][0] == "a"
+
+
+
+def test_lf15_clear_all_locked_faces_removes_entries_and_keeps_toggle():
+    data = {
+        "version": lf.LOCKED_FACES_FORMAT_VERSION,
+        "lock_enabled": True,
+        "locked_faces": {"face-1": {"x": 1}, "face-2": {"x": 2}},
+    }
+    cleared = lf.clear_all_locked_faces(data)
+    assert cleared["locked_faces"] == {}
+    assert cleared["lock_enabled"] is True
+    assert data["locked_faces"] == {"face-1": {"x": 1}, "face-2": {"x": 2}}
+    empty = lf.clear_all_locked_faces(None)
+    assert empty["locked_faces"] == {}
+    assert empty["lock_enabled"] is False

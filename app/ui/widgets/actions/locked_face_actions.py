@@ -1,7 +1,7 @@
 """
 UI glue for the "Lock Target Faces" feature.
 
-- Right-click a target face card -> "Lock Target Face" / "Unlock Target Face".
+- Right-click a target face card -> "Lock Target Face" / "Unlock Target Face" / "Unlock All Faces".
 - Settings > Swap settings -> "Lock Target Faces" toggle.
 
 When the toggle is ON, locked target faces (and the source faces / embeddings
@@ -365,6 +365,38 @@ def toggle_target_face_lock(main_window: "MainWindow", face_id: str) -> None:
         )
     else:
         lock_target_face(main_window, face_id)
+
+
+def unlock_all_faces(main_window: "MainWindow") -> int:
+    """Clear every locked face, save locked_faces.json, and drop the 🔒 labels."""
+    # Cancel a pending snapshot so it cannot rewrite the locks we are clearing.
+    flush_pending_locked_faces_save(main_window)
+    data = _load(main_window)
+    file_count = len(data.get("locked_faces") or {})
+    session_ids = get_locked_face_ids(main_window)
+    if file_count == 0 and not session_ids:
+        return 0
+    if not _save(main_window, lf.clear_all_locked_faces(data)):
+        _toast(
+            main_window,
+            "Unlock All Faces",
+            "Could not write locked_faces.json",
+            "error",
+        )
+        return 0
+    for face_id in session_ids:
+        button = main_window.target_faces.get(face_id)
+        if button is None:
+            continue
+        button.is_locked = False
+        _refresh_label(button)
+    _toast(
+        main_window,
+        "All Faces Unlocked",
+        "They will be cleared on the next media load, as usual.",
+        "information",
+    )
+    return max(file_count, len(session_ids))
 
 
 # ---------------------------------------------------------------------------

@@ -125,6 +125,20 @@ def load_locked_faces_file(path: Path | str) -> Dict[str, Any]:
     return data
 
 
+def clear_all_locked_faces(data: Optional[Mapping[str, Any]] = None) -> Dict[str, Any]:
+    """Return locked-faces data with every lock removed.
+
+    The Lock Target Faces toggle state is preserved so the user does not have
+    to turn it back on after clearing.
+    """
+    source = data if isinstance(data, Mapping) else {}
+    cleared = empty_locked_faces_data()
+    cleared["version"] = source.get("version", LOCKED_FACES_FORMAT_VERSION)
+    cleared["lock_enabled"] = bool(source.get("lock_enabled", False))
+    cleared["locked_faces"] = {}
+    return cleared
+
+
 def save_locked_faces_file(path: Path | str, data: Mapping[str, Any]) -> bool:
     """Atomically write the locked faces file. Returns True on success."""
     path = Path(path)

@@ -776,6 +776,53 @@ def probe_media_metadata(media_file_path, file_type) -> Optional[MediaMetadata]:
     )
 
 
+HD_MIN_HEIGHT = 720
+QUALITY_LABEL_HD = "HD"
+QUALITY_LABEL_SD = "SD"
+
+
+def media_height_from_metadata(metadata) -> Optional[int]:
+    """Return a positive media height from MediaMetadata or a mapping, else None."""
+    if metadata is None:
+        return None
+    height = getattr(metadata, "height", None)
+    if height is None and isinstance(metadata, Mapping):
+        height = metadata.get("height")
+    try:
+        value = int(height)
+    except (TypeError, ValueError):
+        return None
+    return value if value > 0 else None
+
+
+def classify_media_quality(height: Optional[int]) -> Optional[str]:
+    """Return 'HD' when height >= 720, 'SD' when a smaller height is known, else None."""
+    try:
+        value = int(height) if height is not None else 0
+    except (TypeError, ValueError):
+        return None
+    if value <= 0:
+        return None
+    return QUALITY_LABEL_HD if value >= HD_MIN_HEIGHT else QUALITY_LABEL_SD
+
+
+def resolve_media_quality_label(
+    metadata=None,
+    media_path: Optional[str] = None,
+    file_type: Optional[str] = None,
+) -> Optional[str]:
+    """Classify HD/SD from existing metadata, or a cheap probe if height is unknown."""
+    height = media_height_from_metadata(metadata)
+    if height is None and media_path and file_type:
+        try:
+            height = media_height_from_metadata(
+                probe_media_metadata(media_path, file_type)
+            )
+        except Exception:
+            return None
+    return classify_media_quality(height)
+
+
 def get_scaled_resolution(
     media_width: Optional[int] = None,
     media_height: Optional[int] = None,

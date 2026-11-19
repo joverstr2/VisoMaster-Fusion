@@ -5,6 +5,8 @@ MISC-* tests for pure utility functions in app.helpers.miscellaneous
 import numpy as np
 import pytest
 from app.helpers.miscellaneous import (
+    MediaMetadata,
+    classify_media_quality,
     count_issue_scan_frames,
     ParametersDict,
     find_best_target_match,
@@ -14,7 +16,9 @@ from app.helpers.miscellaneous import (
     get_file_type,
     get_scaling_transforms,
     image_extensions,
+    media_height_from_metadata,
     normalize_issue_scan_ranges,
+    resolve_media_quality_label,
     video_extensions,
     _transform_cache,
 )
@@ -330,3 +334,50 @@ class TestKeypointsAdjustmentsGuard:
         params = {"LandmarksPositionAdjEnableToggle": False}
         result = keypoints_adjustments(kps, params)
         np.testing.assert_array_equal(result, kps)
+
+
+# ---------------------------------------------------------------------------
+# HD / SD quality badge classification
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "height,expected",
+    [
+        (1080, "HD"),
+        (720, "HD"),
+        (719, "SD"),
+        (480, "SD"),
+        (1, "SD"),
+        (0, None),
+        (-1, None),
+        (None, None),
+        ("1080", "HD"),
+        ("nope", None),
+    ],
+)
+def test_classify_media_quality(height, expected):
+    assert classify_media_quality(height) == expected
+
+
+def test_media_height_from_metadata_accepts_objects_and_mappings():
+    assert media_height_from_metadata(MediaMetadata(width=1280, height=720)) == 720
+    assert media_height_from_metadata({"height": "1080"}) == 1080
+    assert media_height_from_metadata({"height": 0}) is None
+    assert media_height_from_metadata(None) is None
+
+
+def test_resolve_media_quality_label_uses_metadata_before_probe(tmp_path):
+    assert (
+        resolve_media_quality_label(metadata=MediaMetadata(width=1280, height=720))
+        == "HD"
+    )
+    assert resolve_media_quality_label(metadata={"height": 480}) == "SD"
+    # Unknown resolution and no readable file: fail silently (no badge).
+    missing = tmp_path / "missing.mp4"
+    assert (
+        resolve_media_quality_label(
+            metadata=None, media_path=str(missing), file_type="video"
+        )
+        is None
+    )

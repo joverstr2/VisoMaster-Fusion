@@ -244,6 +244,13 @@ class TargetMediaCardButton(CardButton):
         )
         layout.addWidget(self.text_label, 0)
 
+        self.quality_badge = QtWidgets.QLabel(self)
+        self.quality_badge.setVisible(False)
+        self.quality_badge.setAttribute(
+            QtCore.Qt.WidgetAttribute.WA_TransparentForMouseEvents, True
+        )
+        self.quality_badge.raise_()
+
         self.clicked.connect(self.load_media)
 
         # Set the context menu policy to trigger the custom context menu on right-click
@@ -274,6 +281,48 @@ class TargetMediaCardButton(CardButton):
             QtCore.Qt.TransformationMode.SmoothTransformation,
         )
         self.thumbnail_label.setPixmap(scaled_pixmap)
+        self._position_quality_badge()
+
+    def apply_quality_badge(self, metadata=None) -> None:
+        """Show a small HD/SD badge when the media height is known."""
+        try:
+            label = misc_helpers.resolve_media_quality_label(
+                metadata=metadata,
+                media_path=None if self.is_webcam else self.media_path,
+                file_type=self.file_type,
+            )
+        except Exception:
+            label = None
+        self.set_quality_badge(label)
+
+    def set_quality_badge(self, label) -> None:
+        if label == misc_helpers.QUALITY_LABEL_HD:
+            color = "#2e7d32"
+        elif label == misc_helpers.QUALITY_LABEL_SD:
+            color = "#ef6c00"
+        else:
+            self.quality_badge.clear()
+            self.quality_badge.setVisible(False)
+            return
+        self.quality_badge.setText(label)
+        self.quality_badge.setStyleSheet(
+            "QLabel {"
+            f" background-color: {color}; color: white;"
+            " border-radius: 3px; padding: 0 3px;"
+            " font-weight: bold; font-size: 8pt;"
+            " }"
+        )
+        self.quality_badge.adjustSize()
+        self.quality_badge.setVisible(True)
+        self.quality_badge.raise_()
+        self._position_quality_badge()
+
+    def _position_quality_badge(self) -> None:
+        if not self.quality_badge.isVisible():
+            return
+        margin = 4
+        x = max(margin, self.width() - self.quality_badge.width() - margin)
+        self.quality_badge.move(x, margin)
 
     def reset_media_state(self):
         main_window = self.main_window
@@ -1250,7 +1299,10 @@ class TargetFaceCardButton(CardButton):
             self,
         )
         self.lock_action.triggered.connect(self.toggle_lock)
+        self.unlock_all_action = QtGui.QAction("Unlock All Faces", self)
+        self.unlock_all_action.triggered.connect(self.unlock_all_faces)
         self.popMenu.addAction(self.lock_action)
+        self.popMenu.addAction(self.unlock_all_action)
         self.popMenu.addSeparator()
         self.popMenu.addAction(self.parameters_copy_action)
         self.popMenu.addAction(self.parameters_paste_action)
@@ -1284,6 +1336,9 @@ class TargetFaceCardButton(CardButton):
                     else "Lock Target Face"
                 )
                 lock_action.setEnabled(not scan_active)
+            unlock_all_action = getattr(self, "unlock_all_action", None)
+            if unlock_all_action is not None:
+                unlock_all_action.setEnabled(not scan_active)
             self.small_thumbnails_action.setChecked(current_face_size == (70, 70))
             self.large_thumbnails_action.setChecked(current_face_size == (96, 96))
             self._exec_context_menu(point)
@@ -1300,12 +1355,18 @@ class TargetFaceCardButton(CardButton):
                 "large_thumbnails_action",
                 "remove_action",
                 "lock_action",
+                "unlock_all_action",
             )
 
     def toggle_lock(self):
         from app.ui.widgets.actions import locked_face_actions
 
         locked_face_actions.toggle_target_face_lock(self.main_window, self.face_id)
+
+    def unlock_all_faces(self):
+        from app.ui.widgets.actions import locked_face_actions
+
+        locked_face_actions.unlock_all_faces(self.main_window)
 
     def remove_target_face_from_list(self):
         main_window = self.main_window

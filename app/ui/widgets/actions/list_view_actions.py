@@ -377,6 +377,7 @@ def add_media_thumbnail_button(
         # Populate the sort/filter keys before inserting: the target media list has
         # sorting enabled, so the item is placed using this data on addItem().
         _apply_target_media_item_data(list_item, button, kwargs.get("metadata"))
+        button.apply_quality_badge(kwargs.get("metadata"))
 
     listWidget.addItem(list_item)
     button.list_item = list_item
